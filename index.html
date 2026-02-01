@@ -339,18 +339,39 @@ const Game=()=>{
     const data=generateLevel(l);
     // Always same position: cell (2,2) center - guaranteed clear by generateMaze
     const px=data.playerStart.x, py=data.playerStart.y;
+    // Reset timing so game loop doesn't run stale frames
+    ltRef.current=0;
+    if(animRef.current){cancelAnimationFrame(animRef.current);animRef.current=null;}
     setLd(data);setPl({x:px,y:py,size:18});
-    setInv(60);setPcd(0);setBa(0);setRs(null);setGs('intro');
+    setKeys({});setInv(60);setPcd(0);setBa(0);setRs(null);setSp(false);setGs('intro');
   },[]);
 
   const startGame=(l)=>{setLvl(l);setLives(3);startLevel(l);};
 
+  // CRITICAL: When entering 'playing' state, force-sync player to the level start position.
+  // This eliminates any race conditions from state batching between levels.
+  const playingLevelRef=useRef(null);
+  useEffect(()=>{
+    if(gs==='playing'&&ld){
+      // Only reset position when entering playing for a NEW level (not every render)
+      if(playingLevelRef.current!==ld.levelNum){
+        playingLevelRef.current=ld.levelNum;
+        const px=ld.playerStart.x,py=ld.playerStart.y;
+        setPl({x:px,y:py,size:18});
+        setKeys({});
+        ltRef.current=0;
+      }
+    }
+  },[gs,ld]);
+
   useEffect(()=>{
     const kd=(ev)=>{
       if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','a','s','d','W','A','S','D',' '].includes(ev.key)){
-        ev.preventDefault();setKeys(p=>({...p,[ev.key.toLowerCase()]:true}));if(ev.key===' ')setSp(true);
+        ev.preventDefault();
+        // Don't register movement keys during intro->playing transition
+        if(gs==='intro'&&ev.key===' '){setKeys({});ltRef.current=0;setGs('playing');return;}
+        setKeys(p=>({...p,[ev.key.toLowerCase()]:true}));if(ev.key===' ')setSp(true);
       }
-      if(ev.key===' '&&gs==='intro')setGs('playing');
     };
     const ku=(ev)=>{setKeys(p=>({...p,[ev.key.toLowerCase()]:false}));if(ev.key===' ')setSp(false);};
     window.addEventListener('keydown',kd);window.addEventListener('keyup',ku);
@@ -401,12 +422,17 @@ const Game=()=>{
   // Game loop
   useEffect(()=>{
     if(gs!=='playing'||!ld)return;
+    const safeX=ld.playerStart.x,safeY=ld.playerStart.y;
     const loop=(ts)=>{
       if(!ltRef.current)ltRef.current=ts;
       if(ts-ltRef.current>16){
         ltRef.current=ts;
         if(rs===null){
           setPl(p=>{
+            // RESCUE: if player is currently inside a wall, snap to start position
+            if(wallCheck(p.x,p.y,p.size,ld.maze,ld.cs,ld.cols,ld.rows,false)){
+              return{...p,x:safeX,y:safeY};
+            }
             let nx=p.x,ny=p.y;const sp=3;
             if(keys.arrowleft||keys.a)nx-=sp;if(keys.arrowright||keys.d)nx+=sp;
             if(keys.arrowup||keys.w)ny-=sp;if(keys.arrowdown||keys.s)ny+=sp;
@@ -626,7 +652,7 @@ const Game=()=>{
       ld.bubbles.length>0&&el('div',{style:{fontSize:11,color:'#93c5fd',marginBottom:4}},`🫧 ${ld.bubbles.length} bubble${ld.bubbles.length>1?'s':''}`),
       el('div',{style:{fontSize:15,marginTop:6}},`❤️ Lives: ${lives}`),
       el('div',{style:{marginTop:14,fontSize:15,animation:'pulse 1s infinite'}},isMobile?null:'Press SPACE to begin!'),
-      isMobile&&el('button',{onClick:()=>setGs('playing'),style:{marginTop:10,padding:'12px 35px',fontSize:16,fontWeight:'bold',background:'linear-gradient(135deg,#6366f1,#4f46e5)',border:'none',borderRadius:10,color:'white',cursor:'pointer',boxShadow:'0 4px 12px rgba(99,102,241,.4)',animation:'pulse 1.5s infinite'}},'TAP TO START')
+      isMobile&&el('button',{onClick:()=>{setKeys({});ltRef.current=0;setGs('playing');},style:{marginTop:10,padding:'12px 35px',fontSize:16,fontWeight:'bold',background:'linear-gradient(135deg,#6366f1,#4f46e5)',border:'none',borderRadius:10,color:'white',cursor:'pointer',boxShadow:'0 4px 12px rgba(99,102,241,.4)',animation:'pulse 1.5s infinite'}},'TAP TO START')
     );
   }
 
