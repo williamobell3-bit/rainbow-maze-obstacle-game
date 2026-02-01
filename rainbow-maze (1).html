@@ -262,7 +262,7 @@ const Game=()=>{
   const[lvl,setLvl]=useState(1);
   const[ld,setLd]=useState(null);
   const[pl,setPl]=useState({x:40,y:40,size:18});
-  const[lives,setLives]=useState(3);
+  const[lives,setLives]=useState(1);
   const[keys,setKeys]=useState({});
   const[inv,setInv]=useState(0);
   const[pcd,setPcd]=useState(0);
@@ -346,7 +346,7 @@ const Game=()=>{
     setKeys({});setInv(60);setPcd(0);setBa(0);setRs(null);setSp(false);setGs('intro');
   },[]);
 
-  const startGame=(l)=>{setLvl(l);setLives(3);startLevel(l);};
+  const startGame=(l)=>{setLvl(l);setLives(1);startLevel(l);};
 
   // CRITICAL: When entering 'playing' state, force-sync player to the level start position.
   // This eliminates any race conditions from state batching between levels.
@@ -673,7 +673,7 @@ const Game=()=>{
       el('div',{style:{fontSize:20,marginBottom:10}},`You reached Level ${lvl}`),
       el('div',{style:{fontSize:15,marginBottom:28,opacity:.8}},lvl>=200?'🏆 INCREDIBLE!':lvl>=100?'🌟 Amazing!':lvl>=50?'⭐ Great job!':lvl>=20?'👍 Good effort!':'Keep practicing!'),
       el('div',{style:{display:'flex',gap:12}},
-        el('button',{onClick:()=>{setLives(3);startLevel(lvl);},style:{padding:'12px 30px',fontSize:18,fontWeight:'bold',background:'linear-gradient(135deg,#ef4444,#dc2626)',border:'none',borderRadius:10,color:'white',cursor:'pointer'}},'RETRY'),
+        el('button',{onClick:()=>{setLives(1);startLevel(lvl);},style:{padding:'12px 30px',fontSize:18,fontWeight:'bold',background:'linear-gradient(135deg,#ef4444,#dc2626)',border:'none',borderRadius:10,color:'white',cursor:'pointer'}},'RETRY'),
         el('button',{onClick:()=>{setLobbyPage(Math.floor((lvl-1)/LEVELS_PER_PAGE));setGs('lobby');},style:{padding:'12px 30px',fontSize:18,fontWeight:'bold',background:'rgba(255,255,255,.15)',border:'1px solid rgba(255,255,255,.3)',borderRadius:10,color:'white',cursor:'pointer'}},'LOBBY')
       )
     );
