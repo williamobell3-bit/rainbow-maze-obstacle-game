@@ -6,8 +6,8 @@
   <title>🌈 Rainbow Maze - 250 Levels!</title>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
-    body{background:linear-gradient(135deg,#0f0a1e,#1a1333);min-height:100vh;display:flex;justify-content:center;align-items:center;font-family:system-ui,-apple-system,sans-serif;overflow:hidden}
-    #root{display:flex;justify-content:center;align-items:center}
+    body{background:linear-gradient(135deg,#0f0a1e,#1a1333);min-height:100vh;display:flex;justify-content:center;align-items:center;font-family:system-ui,-apple-system,sans-serif;overflow:auto}
+    #root{display:flex;justify-content:center;align-items:center;flex-direction:column}
     @keyframes portalPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.12);opacity:.7}}
     @keyframes bubbleFloat{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-4px) scale(1.05)}}
     @keyframes bubbleShield{0%{transform:scale(1);opacity:.9}100%{transform:scale(1.1);opacity:.5}}
@@ -272,26 +272,106 @@ const Game=()=>{
   const[unlocked,setUnlocked]=useState(1);
   const[charId,setCharId]=useState('smiley');
   const[lobbyPage,setLobbyPage]=useState(0);
+  const[isMobile,setIsMobile]=useState(false);
   const touchRef=useRef(null);
   const animRef=useRef(null);
   const ltRef=useRef(0);
+
+  // Detect touch device
+  useEffect(()=>{
+    const check=()=>setIsMobile('ontouchstart' in window||navigator.maxTouchPoints>0||window.innerWidth<800);
+    check();window.addEventListener('resize',check);return()=>window.removeEventListener('resize',check);
+  },[]);
+
+  // Touch control helpers - simulate key press/release
+  const touchDown=useCallback((key)=>{
+    setKeys(p=>({...p,[key]:true}));
+    if(key===' '){setSp(true);if(gs==='intro')setGs('playing');}
+  },[gs]);
+  const touchUp=useCallback((key)=>{
+    setKeys(p=>({...p,[key]:false}));
+    if(key===' ')setSp(false);
+  },[]);
+
+  const renderDpad=()=>{
+    const bs={width:52,height:52,borderRadius:10,border:'none',fontSize:22,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',userSelect:'none',WebkitUserSelect:'none',touchAction:'none'};
+    const normal='rgba(255,255,255,.12)';
+    const mkBtn=(label,key,gCol,gRow,extra)=>el('button',{
+      key:key,
+      onPointerDown:(ev)=>{ev.preventDefault();touchDown(key);},
+      onPointerUp:(ev)=>{ev.preventDefault();touchUp(key);},
+      onPointerLeave:(ev)=>{ev.preventDefault();touchUp(key);},
+      onContextMenu:(ev)=>ev.preventDefault(),
+      style:{...bs,background:normal,color:'white',gridColumn:gCol,gridRow:gRow,...(extra||{})}
+    },label);
+    return el('div',{style:{display:'grid',gridTemplateColumns:'52px 52px 52px',gridTemplateRows:'52px 52px 52px',gap:4}},
+      mkBtn('▲','arrowup',2,1),
+      mkBtn('◀','arrowleft',1,2),
+      mkBtn('▼','arrowdown',2,3),
+      mkBtn('▶','arrowright',3,2)
+    );
+  };
+
+  const renderTouchControls=()=>{
+    return el('div',{style:{
+      width:GW,maxWidth:'100vw',display:'flex',justifyContent:'space-between',alignItems:'center',
+      padding:'12px 24px',background:'rgba(15,10,30,.95)',borderRadius:'0 0 12px 12px',
+      borderTop:'1px solid rgba(255,255,255,.1)'
+    }},
+      renderDpad(),
+      el('button',{
+        onPointerDown:(ev)=>{ev.preventDefault();touchDown(' ');},
+        onPointerUp:(ev)=>{ev.preventDefault();touchUp(' ');},
+        onPointerLeave:(ev)=>{ev.preventDefault();touchUp(' ');},
+        onContextMenu:(ev)=>ev.preventDefault(),
+        style:{
+          width:80,height:80,borderRadius:'50%',border:'3px solid rgba(34,197,94,.5)',
+          background:'rgba(34,197,94,.15)',color:'#22c55e',fontSize:12,fontWeight:'bold',
+          cursor:'pointer',userSelect:'none',WebkitUserSelect:'none',touchAction:'none',
+          display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:2,
+          boxShadow:'0 0 15px rgba(34,197,94,.2)'
+        }
+      },el('span',{style:{fontSize:18}},'🎯'),el('span',{style:{fontSize:9}},'SPACE'))
+    );
+  };
 
   const startLevel=useCallback((l)=>{
     const data=generateLevel(l);
     // Always same position: cell (2,2) center - guaranteed clear by generateMaze
     const px=data.playerStart.x, py=data.playerStart.y;
+    // Reset timing so game loop doesn't run stale frames
+    ltRef.current=0;
+    if(animRef.current){cancelAnimationFrame(animRef.current);animRef.current=null;}
     setLd(data);setPl({x:px,y:py,size:18});
-    setInv(60);setPcd(0);setBa(0);setRs(null);setGs('intro');
+    setKeys({});setInv(60);setPcd(0);setBa(0);setRs(null);setSp(false);setGs('intro');
   },[]);
 
   const startGame=(l)=>{setLvl(l);setLives(3);startLevel(l);};
 
+  // CRITICAL: When entering 'playing' state, force-sync player to the level start position.
+  // This eliminates any race conditions from state batching between levels.
+  const playingLevelRef=useRef(null);
+  useEffect(()=>{
+    if(gs==='playing'&&ld){
+      // Only reset position when entering playing for a NEW level (not every render)
+      if(playingLevelRef.current!==ld.levelNum){
+        playingLevelRef.current=ld.levelNum;
+        const px=ld.playerStart.x,py=ld.playerStart.y;
+        setPl({x:px,y:py,size:18});
+        setKeys({});
+        ltRef.current=0;
+      }
+    }
+  },[gs,ld]);
+
   useEffect(()=>{
     const kd=(ev)=>{
       if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','a','s','d','W','A','S','D',' '].includes(ev.key)){
-        ev.preventDefault();setKeys(p=>({...p,[ev.key.toLowerCase()]:true}));if(ev.key===' ')setSp(true);
+        ev.preventDefault();
+        // Don't register movement keys during intro->playing transition
+        if(gs==='intro'&&ev.key===' '){setKeys({});ltRef.current=0;setGs('playing');return;}
+        setKeys(p=>({...p,[ev.key.toLowerCase()]:true}));if(ev.key===' ')setSp(true);
       }
-      if(ev.key===' '&&gs==='intro')setGs('playing');
     };
     const ku=(ev)=>{setKeys(p=>({...p,[ev.key.toLowerCase()]:false}));if(ev.key===' ')setSp(false);};
     window.addEventListener('keydown',kd);window.addEventListener('keyup',ku);
@@ -324,7 +404,7 @@ const Game=()=>{
     const pcx=pl.x+pl.size/2,pcy=pl.y+pl.size/2;
     for(let i=0;i<ld.swings.length;i++){
       const sw=ld.swings[i];const ex=sw.pivotX+Math.sin(sw.angle)*sw.length,ey=sw.pivotY+Math.cos(sw.angle)*sw.length;
-      if(Math.hypot(pcx-ex,pcy-ey)<30){setRs(i);setSp(false);break;}
+      if(Math.hypot(pcx-ex,pcy-ey)<50){setRs(i);setSp(false);break;}
     }
     setSp(false);
   },[sp,gs,ld,rs,pl,wallCheck]);
@@ -342,12 +422,17 @@ const Game=()=>{
   // Game loop
   useEffect(()=>{
     if(gs!=='playing'||!ld)return;
+    const safeX=ld.playerStart.x,safeY=ld.playerStart.y;
     const loop=(ts)=>{
       if(!ltRef.current)ltRef.current=ts;
       if(ts-ltRef.current>16){
         ltRef.current=ts;
         if(rs===null){
           setPl(p=>{
+            // RESCUE: if player is currently inside a wall, snap to start position
+            if(wallCheck(p.x,p.y,p.size,ld.maze,ld.cs,ld.cols,ld.rows,false)){
+              return{...p,x:safeX,y:safeY};
+            }
             let nx=p.x,ny=p.y;const sp=3;
             if(keys.arrowleft||keys.a)nx-=sp;if(keys.arrowright||keys.d)nx+=sp;
             if(keys.arrowup||keys.w)ny-=sp;if(keys.arrowdown||keys.s)ny+=sp;
@@ -407,7 +492,10 @@ const Game=()=>{
     if(!hit)for(const m of ld.monsters){if(cr(pr,m.x,m.y,14)){hit=true;break;}}
     if(!hit)for(const g of ld.gears){if(cr(pr,g.x,g.y,g.radius-4)){hit=true;break;}}
     if(!hit)for(let i=0;i<ld.swings.length;i++){
-      if(rs===i)continue;const sw=ld.swings[i];
+      if(rs===i)continue;
+      // Don't take damage from swings while pressing space (trying to grab)
+      if(keys[' '])continue;
+      const sw=ld.swings[i];
       const ex=sw.pivotX+Math.sin(sw.angle)*sw.length,ey=sw.pivotY+Math.cos(sw.angle)*sw.length;
       if(cr(pr,ex,ey,11)){hit=true;break;}
     }
@@ -482,7 +570,7 @@ const Game=()=>{
       el('div',{style:{fontSize:15,marginBottom:25,opacity:.8,textAlign:'center'}},'Navigate procedural mazes • Avoid forbidden colors',el('br'),'Dodge obstacles • Reach the rainbow!'),
       el('button',{onClick:()=>setGs('lobby'),style:{padding:'14px 45px',fontSize:22,fontWeight:'bold',background:'linear-gradient(135deg,#22c55e,#16a34a)',border:'none',borderRadius:10,color:'white',cursor:'pointer',boxShadow:'0 4px 15px rgba(34,197,94,.4)'}},'START GAME'),
       el('div',{style:{marginTop:25,fontSize:12,opacity:.7,textAlign:'center',lineHeight:1.9}},
-        el('div',null,'🎮 ARROW KEYS or WASD to move'),
+        el('div',null,'🎮 ARROW KEYS / WASD / Touch controls'),
         el('div',null,'🧱 Maze walls • 🚫 Forbidden colors • 📌 Wall spikes'),
         el('div',{style:{color:'#22c55e'}},'🎯 SPACE near swings = RIDE through walls!'),
         el('div',null,'🔮 Portals • 🫧 Safety bubbles (Lvl 15+)'),
@@ -566,7 +654,8 @@ const Game=()=>{
       ld.elevators.some(e=>ld.forbiddenColors.includes(e.color))&&el('div',{style:{fontSize:11,color:'#f97316',marginBottom:4}},'⚠️ Poisonous platforms!'),
       ld.bubbles.length>0&&el('div',{style:{fontSize:11,color:'#93c5fd',marginBottom:4}},`🫧 ${ld.bubbles.length} bubble${ld.bubbles.length>1?'s':''}`),
       el('div',{style:{fontSize:15,marginTop:6}},`❤️ Lives: ${lives}`),
-      el('div',{style:{marginTop:14,fontSize:15,animation:'pulse 1s infinite'}},'Press SPACE to begin!')
+      el('div',{style:{marginTop:14,fontSize:15,animation:'pulse 1s infinite'}},isMobile?null:'Press SPACE to begin!'),
+      isMobile&&el('button',{onClick:()=>{setKeys({});ltRef.current=0;setGs('playing');},style:{marginTop:10,padding:'12px 35px',fontSize:16,fontWeight:'bold',background:'linear-gradient(135deg,#6366f1,#4f46e5)',border:'none',borderRadius:10,color:'white',cursor:'pointer',boxShadow:'0 4px 12px rgba(99,102,241,.4)',animation:'pulse 1.5s infinite'}},'TAP TO START')
     );
   }
 
@@ -602,7 +691,7 @@ const Game=()=>{
   // PLAYING
   if(gs==='playing'&&ld){
     const btr=(ba/60).toFixed(1);const onSw=rs!==null;const cs=ld.cs;
-    return el('div',{tabIndex:0,style:{width:GW,height:GH,background:'#0c1222',position:'relative',overflow:'hidden',outline:'none',borderRadius:12}},
+    const gameArea=el('div',{tabIndex:0,style:{width:GW,height:GH,background:'#0c1222',position:'relative',overflow:'hidden',outline:'none',borderRadius:isMobile?'12px 12px 0 0':'12px'}},
       el('div',{style:{position:'absolute',inset:0,backgroundImage:'radial-gradient(circle at 2px 2px,#1e293b 1px,transparent 0)',backgroundSize:`${cs/2}px ${cs/2}px`,opacity:.3}}),
       el('div',{style:{opacity:onSw?.4:1,transition:'opacity .2s'}},renderMaze(ld.maze,cs)),
       ld.spikes.map((s,i)=>el(React.Fragment,{key:`sp${i}`},renderSpike(s))),
@@ -647,6 +736,8 @@ const Game=()=>{
         )
       )
     );
+    if(isMobile) return el('div',{style:{display:'flex',flexDirection:'column',alignItems:'center'}},gameArea,renderTouchControls());
+    return gameArea;
   }
   return null;
 };
